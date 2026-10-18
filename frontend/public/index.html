@@ -1,0 +1,31 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DIDLab Counter</title>
+</head>
+<body>
+  <h1>DIDLab Counter</h1>
+
+  <p id="network">Network: checking...</p>
+  <p id="account">Wallet: not connected</p>
+  <button id="connect">Connect wallet</button>
+
+  <h2>Current count</h2>
+  <pre id="state">Loading...</pre>
+
+  <h2>Change counter</h2>
+  <button id="increment" disabled>Increment counter (+1)</button>
+  <button id="decrement" disabled>Decrement counter (-1)</button>
+
+  <h2>Status</h2>
+  <pre id="status">Idle</pre>
+
+  <h2>Activity</h2>
+  <ul id="events"></ul>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
