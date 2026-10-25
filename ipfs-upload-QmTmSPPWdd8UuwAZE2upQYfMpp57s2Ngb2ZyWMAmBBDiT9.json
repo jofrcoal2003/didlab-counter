@@ -1,0 +1,17 @@
+{
+  "bundleVersion": 2,
+  "cid": "QmTmSPPWdd8UuwAZE2upQYfMpp57s2Ngb2ZyWMAmBBDiT9",
+  "name": "didlab-c12ffa87-08db-4b2a-aaf4-3d2068ece921.bin",
+  "size": "586",
+  "ipfsUri": "ipfs://QmTmSPPWdd8UuwAZE2upQYfMpp57s2Ngb2ZyWMAmBBDiT9",
+  "gatewayUrl": "https://gateway.didlab.org/ipfs/QmTmSPPWdd8UuwAZE2upQYfMpp57s2Ngb2ZyWMAmBBDiT9",
+  "address": "0x0DC1AF65A6F4D747765A4B575c2Fe551Fb6fb82e",
+  "timestamp": 1792956727,
+  "iv": "2aSvnIYbk0isRrGD",
+  "originalName": "Counter.sol",
+  "mimeType": "application/octet-stream",
+  "encryption": "AES-256-GCM",
+  "ciphertextSha256": "ad4b205e28112abc6c07885172210f076fa702d1f0ec89e0a8be7683e6096103",
+  "publishAuthorizedAt": 1792956925,
+  "payment": null
+}

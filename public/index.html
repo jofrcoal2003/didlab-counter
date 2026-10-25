@@ -26,6 +26,51 @@
   <h2>Activity</h2>
   <ul id="events"></ul>
 
+  <hr />
+
+  <h1>Anchor Registry</h1>
+
+  <p>
+    Contract:
+    <code id="registry-address"></code>
+  </p>
+
+  <p id="role">Role: connect your wallet</p>
+
+  <h2>Stored record</h2>
+  <p>Record ID: <code id="record-id"></code></p>
+  <p>SHA-256: <code id="record-digest">Loading...</code></p>
+  <p>
+    IPFS:
+    <a id="record-cid" target="_blank" rel="noopener noreferrer">
+      Loading...
+    </a>
+  </p>
+  <p>Submitter: <code id="record-submitter">Loading...</code></p>
+  <p>Verification: <span id="record-verification">Loading...</span></p>
+
+  <section id="anchor-panel" hidden>
+    <h2>Submitter actions</h2>
+    <p>Anchor a new record.</p>
+
+    <input id="anchor-id" placeholder="Unique record ID" />
+    <input id="anchor-digest" placeholder="0x-prefixed SHA-256 digest" />
+    <input id="anchor-cid" placeholder="IPFS CID" />
+
+    <button id="anchor-button">Anchor record</button>
+  </section>
+
+  <section id="verify-panel" hidden>
+    <h2>Verifier actions</h2>
+    <p>Verify an existing record.</p>
+
+    <input id="verify-id" placeholder="Record ID" />
+    <button id="verify-button">Verify record</button>
+  </section>
+
+  <h2>Registry status</h2>
+  <pre id="registry-status">Connect your wallet to see available actions.</pre>
+
   <script type="module" src="./app.js"></script>
 </body>
 </html>

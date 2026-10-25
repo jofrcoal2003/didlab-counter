@@ -1,6 +1,7 @@
 
 import { ethers } from "https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.min.js";
 import { COUNTER_ABI } from "./abi.js";
+import { REGISTRY_ADDRESS, REGISTRY_ABI } from "./registry-abi.js";
 
 const CONTRACT_ADDRESS = "0x1f875D56D85Ef2594Aa32048B491d8845125a1d4";
 const DEPLOYMENT_TX =
@@ -19,8 +20,15 @@ const incrementButton = document.getElementById("increment");
 const decrementButton = document.getElementById("decrement");
 const eventsList = document.getElementById("events");
 
+const registryStatus = document.getElementById("registry-status");
+const roleText = document.getElementById("role");
+const anchorPanel = document.getElementById("anchor-panel");
+const verifyPanel = document.getElementById("verify-panel");
+
 let provider;
 let contract;
+let registryWrite = null;
+let registryBusy = false;
 let lastScannedBlock = null;
 let polling = false;
 let transactionPending = false;
@@ -35,7 +43,18 @@ const publicContract = new ethers.Contract(
   publicProvider
 );
 
-// Read current state directly from DIDLab.
+const registryRead = new ethers.Contract(
+  REGISTRY_ADDRESS,
+  REGISTRY_ABI,
+  publicProvider
+);
+
+const recordId = ethers.id("counter-sol-record-001");
+
+document.getElementById("registry-address").textContent = REGISTRY_ADDRESS;
+document.getElementById("record-id").textContent = recordId;
+
+// Read the Counter contract.
 async function readCount() {
   try {
     const count = await publicContract.getCount();
@@ -46,14 +65,14 @@ async function readCount() {
   }
 }
 
-// Display network and current block number.
+// Display network and block number.
 async function checkNetwork() {
   try {
     const network = await publicProvider.getNetwork();
     const block = await publicProvider.getBlockNumber();
 
     networkText.textContent =
-      `Network: DIDLab (${network.chainId}) · Block ${block}`;
+      `Network: DIDLab (${network.chainId}) - Block ${block}`;
 
     if (network.chainId !== DIDLAB_CHAIN_ID) {
       networkText.textContent = "RPC returned the wrong network.";
@@ -64,7 +83,7 @@ async function checkNetwork() {
   }
 }
 
-// Add one event to the top of the activity list.
+// Display Counter events.
 function displayEvent(event) {
   if (
     eventsList.children.length === 1 &&
@@ -84,7 +103,7 @@ function displayEvent(event) {
   eventsList.prepend(item);
 }
 
-// Load historical events from the contract deployment onward.
+// Load historical Counter events.
 async function loadRecentEvents() {
   try {
     const receipt = await publicProvider.getTransactionReceipt(
@@ -92,7 +111,7 @@ async function loadRecentEvents() {
     );
 
     if (!receipt) {
-      throw new Error("V2 deployment receipt was not found.");
+      throw new Error("Counter deployment receipt was not found.");
     }
 
     const deploymentBlock = receipt.blockNumber;
@@ -139,10 +158,6 @@ async function loadRecentEvents() {
     }
 
     lastScannedBlock = latestBlock;
-
-    console.log(
-      `Loaded ${events.length} historical events through block ${latestBlock}.`
-    );
   } catch (error) {
     console.error("Could not load historical events:", error);
     statusText.textContent =
@@ -150,7 +165,7 @@ async function loadRecentEvents() {
   }
 }
 
-// Search newly produced blocks for counter events.
+// Poll for new Counter events.
 async function pollForEvents() {
   if (polling) return;
 
@@ -184,21 +199,15 @@ async function pollForEvents() {
         newEvents.push(...chunkEvents);
       }
 
-      // Advance only after all queries succeeded.
       lastScannedBlock = latestBlock;
 
       if (newEvents.length > 0) {
         for (const event of newEvents) {
-          console.log("New blockchain event:", {
-            count: event.args.newCount.toString(),
-            changedBy: event.args.changedBy,
-            block: event.blockNumber
-          });
-
           displayEvent(event);
         }
 
         await readCount();
+
         statusText.textContent =
           "Blockchain event received; state refreshed.";
       }
@@ -211,14 +220,95 @@ async function pollForEvents() {
   }
 }
 
-// Enable or disable both transaction buttons together.
+// Enable or disable Counter buttons.
 function updateTransactionButtons() {
   const disabled = !contract || transactionPending;
+
   incrementButton.disabled = disabled;
   decrementButton.disabled = disabled;
 }
 
-// Connect MetaMask and check the network.
+// Read the anchored record from the blockchain.
+async function refreshRecord() {
+  try {
+    const record = await registryRead.get(recordId);
+
+    document.getElementById("record-digest").textContent =
+      record.digest;
+
+    document.getElementById("record-submitter").textContent =
+      record.submitter;
+
+    const cidLink = document.getElementById("record-cid");
+
+    cidLink.textContent = record.cid;
+
+    cidLink.href =
+      "https://gateway.didlab.org/ipfs/" +
+      encodeURIComponent(record.cid);
+
+    document.getElementById("record-verification").textContent =
+      record.verifiedAt > 0n
+        ? `Verified by ${record.verifier}`
+        : "Not verified";
+  } catch (error) {
+    registryStatus.textContent =
+      "Could not load registry record.";
+
+    console.error("Record read failed:", error);
+  }
+}
+
+// Check the connected wallet's roles.
+async function refreshRole() {
+  anchorPanel.hidden = true;
+  verifyPanel.hidden = true;
+  registryWrite = null;
+
+  if (!provider) {
+    roleText.textContent = "Role: connect your wallet";
+    return;
+  }
+
+  const network = await provider.getNetwork();
+
+  if (network.chainId !== DIDLAB_CHAIN_ID) {
+    roleText.textContent = "Role: wrong network";
+    return;
+  }
+
+  const signer = await provider.getSigner();
+  const address = await signer.getAddress();
+
+  const [submitterRole, verifierRole] = await Promise.all([
+    registryRead.SUBMITTER(),
+    registryRead.VERIFIER()
+  ]);
+
+  const [canSubmit, canVerify] = await Promise.all([
+    registryRead.hasRole(submitterRole, address),
+    registryRead.hasRole(verifierRole, address)
+  ]);
+
+  registryWrite = new ethers.Contract(
+    REGISTRY_ADDRESS,
+    REGISTRY_ABI,
+    signer
+  );
+
+  anchorPanel.hidden = !canSubmit;
+  verifyPanel.hidden = !canVerify;
+
+  roleText.textContent =
+    canSubmit && canVerify ? "Role: submitter + verifier" :
+    canSubmit ? "Role: submitter" :
+    canVerify ? "Role: verifier" :
+    "Role: no role on this registry";
+
+  registryStatus.textContent = "Registry ready.";
+}
+
+// Connect MetaMask.
 async function connectWallet() {
   try {
     if (!window.ethereum) {
@@ -243,7 +333,10 @@ async function connectWallet() {
     if (network.chainId !== DIDLAB_CHAIN_ID) {
       networkText.textContent =
         "Wrong network. Please switch MetaMask to DIDLab.";
-      statusText.textContent = "Switch to DIDLab and try again.";
+
+      statusText.textContent =
+        "Switch to DIDLab and try again.";
+
       return;
     }
 
@@ -257,7 +350,12 @@ async function connectWallet() {
 
     accountText.textContent = `Wallet: ${accounts[0]}`;
     statusText.textContent = "Wallet connected.";
+
     updateTransactionButtons();
+
+    // Detect roles after wallet connection finishes.
+    await refreshRole();
+
   } catch (error) {
     statusText.textContent =
       `Connection failed: ${error.shortMessage || error.message}`;
@@ -266,7 +364,7 @@ async function connectWallet() {
   }
 }
 
-// Use the same transaction workflow for increment and decrement.
+// Submit Counter transactions.
 async function submitCounterTransaction(method, label) {
   if (!contract || transactionPending) {
     statusText.textContent = "Connect your wallet first.";
@@ -277,12 +375,13 @@ async function submitCounterTransaction(method, label) {
   updateTransactionButtons();
 
   try {
-    statusText.textContent = `Simulating ${label.toLowerCase()}...`;
+    statusText.textContent =
+      `Simulating ${label.toLowerCase()}...`;
 
-    // Simulate before asking MetaMask to sign.
     await contract[method].staticCall();
 
-    statusText.textContent = "Awaiting MetaMask signature...";
+    statusText.textContent =
+      "Awaiting MetaMask signature...";
 
     const transaction = await contract[method]();
 
@@ -293,10 +392,11 @@ async function submitCounterTransaction(method, label) {
     if (receipt.status === 1) {
       statusText.textContent =
         `Transaction confirmed in block ${receipt.blockNumber}. Waiting for event...`;
-      // Do not read state here. The event poller refreshes it.
     } else {
-      statusText.textContent = "Transaction reverted on-chain.";
+      statusText.textContent =
+        "Transaction reverted on-chain.";
     }
+
   } catch (error) {
     if (
       error.code === 4001 ||
@@ -312,14 +412,57 @@ async function submitCounterTransaction(method, label) {
     }
 
     console.error(`${label} failed:`, error);
+
   } finally {
     transactionPending = false;
     updateTransactionButtons();
   }
 }
 
+// Submit AnchorRegistry transactions.
+async function submitRegistryTransaction(method, args) {
+  if (!registryWrite || registryBusy) return;
+
+  registryBusy = true;
+
+  try {
+    registryStatus.textContent =
+      "Simulating transaction...";
+
+    await registryWrite[method].staticCall(...args);
+
+    registryStatus.textContent =
+      "Awaiting MetaMask signature...";
+
+    const tx = await registryWrite[method](...args);
+
+    registryStatus.textContent =
+      `Pending: ${tx.hash}`;
+
+    await tx.wait();
+
+    registryStatus.textContent =
+      `Confirmed: ${tx.hash}`;
+
+    await refreshRecord();
+
+  } catch (error) {
+    registryStatus.textContent =
+      `Transaction rejected: ${
+        error.revert?.name ||
+        error.shortMessage ||
+        error.message
+      }`;
+
+  } finally {
+    registryBusy = false;
+  }
+}
+
+// Connect wallet button.
 connectButton.addEventListener("click", connectWallet);
 
+// Counter buttons.
 incrementButton.addEventListener("click", () => {
   submitCounterTransaction("increment", "Increment");
 });
@@ -328,10 +471,75 @@ decrementButton.addEventListener("click", () => {
   submitCounterTransaction("decrement", "Decrement");
 });
 
-// Initialize public reads and historical activity.
+// Anchor button.
+document.getElementById("anchor-button").addEventListener(
+  "click",
+  () => {
+    const id = document.getElementById("anchor-id").value.trim();
+    const digest = document.getElementById("anchor-digest").value.trim();
+    const cid = document.getElementById("anchor-cid").value.trim();
+
+    if (!id || !ethers.isHexString(digest, 32) || !cid) {
+      registryStatus.textContent =
+        "Enter a record ID, valid SHA-256 digest, and CID.";
+      return;
+    }
+
+    submitRegistryTransaction(
+      "anchor",
+      [ethers.id(id), digest, cid]
+    );
+  }
+);
+
+// Verify button.
+document.getElementById("verify-button").addEventListener(
+  "click",
+  () => {
+    const id = document.getElementById("verify-id").value.trim();
+
+    if (!id) {
+      registryStatus.textContent =
+        "Enter a record ID.";
+      return;
+    }
+
+    submitRegistryTransaction(
+      "verify",
+      [ethers.id(id)]
+    );
+  }
+);
+
+// Reset wallet-specific controls when accounts change.
+if (window.ethereum) {
+  window.ethereum.on("accountsChanged", () => {
+    contract = null;
+    provider = null;
+    registryWrite = null;
+
+    accountText.textContent =
+      "Wallet: reconnect required";
+
+    roleText.textContent =
+      "Role: connect your wallet";
+
+    anchorPanel.hidden = true;
+    verifyPanel.hidden = true;
+
+    updateTransactionButtons();
+  });
+
+  window.ethereum.on("chainChanged", () => {
+    window.location.reload();
+  });
+}
+
+// Initialize website.
 async function initialize() {
   await checkNetwork();
   await readCount();
+  await refreshRecord();
   await loadRecentEvents();
   pollForEvents();
 }
